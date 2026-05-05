@@ -1,8 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 
 import { route } from "../src/router";
-import type { Env } from "../src/types";
-import { MemoryKV, MemoryR2 } from "./helpers";
+import { createSession } from "../src/auth";
+import { hashPassword } from "../src/crypto";
+import { SESSION_COOKIE } from "../src/types";
+import type { Env, UserRecord } from "../src/types";
+import { makeFullEnv } from "./envFactory";
 
 const fakeRoomsNamespace = () => {
   const calls: { idName: string; req: Request }[] = [];
@@ -20,26 +23,41 @@ const fakeRoomsNamespace = () => {
   };
 };
 
+let sessionCookie = "";
+
 const makeEnv = () => {
   const rooms = fakeRoomsNamespace();
-  return {
-    rooms,
-    env: {
-      SCENES: new MemoryKV() as unknown as KVNamespace,
-      FILES: new MemoryR2() as unknown as R2Bucket,
-      ROOMS: rooms.ns,
-    } satisfies Env,
-  };
+  const env = makeFullEnv({ ROOMS: rooms.ns });
+  return { rooms, env };
 };
 
+const withAuth = (init: RequestInit = {}): RequestInit => ({
+  ...init,
+  headers: {
+    ...(init.headers as Record<string, string>),
+    Cookie: `${SESSION_COOKIE}=${sessionCookie}`,
+  },
+});
+
 describe("router", () => {
+  let env: Env;
+  let rooms: ReturnType<typeof fakeRoomsNamespace>;
+
+  beforeEach(async () => {
+    ({ env, rooms } = makeEnv());
+    // Seed a user and create a session for auth
+    const { hash, salt } = await hashPassword("testpass");
+    const record: UserRecord = { passwordHash: hash, salt, role: "user", createdAt: Date.now() };
+    await env.USERS.put("user:testuser", JSON.stringify(record));
+    sessionCookie = await createSession(env, "testuser", "user");
+  });
+
   it("forwards /api/v2/post to the scene handler", async () => {
-    const { env } = makeEnv();
     const res = await route(
-      new Request("https://w/api/v2/post/", {
+      new Request("https://w/api/v2/post/", withAuth({
         method: "POST",
         body: new Uint8Array([1, 2, 3]),
-      }),
+      })),
       env,
     );
     expect(res).not.toBeNull();
@@ -49,40 +67,37 @@ describe("router", () => {
   });
 
   it("forwards /api/v2/{id} to the scene GET handler", async () => {
-    const { env } = makeEnv();
     const post = await route(
-      new Request("https://w/api/v2/post/", {
+      new Request("https://w/api/v2/post/", withAuth({
         method: "POST",
         body: new Uint8Array([1]),
-      }),
+      })),
       env,
     );
     const { id } = (await post!.json()) as { id: string };
-    const get = await route(new Request(`https://w/api/v2/${id}`), env);
+    const get = await route(new Request(`https://w/api/v2/${id}`, withAuth()), env);
     expect(get!.status).toBe(200);
   });
 
   it("forwards /api/files/* to file handlers", async () => {
-    const { env } = makeEnv();
     const path = "files/shareLinks/abc/file1";
     const put = await route(
-      new Request(`https://w/api/${path}`, {
+      new Request(`https://w/api/${path}`, withAuth({
         method: "PUT",
         body: new Uint8Array([7]),
-      }),
+      })),
       env,
     );
     expect(put!.status).toBe(200);
-    const get = await route(new Request(`https://w/api/${path}`), env);
+    const get = await route(new Request(`https://w/api/${path}`, withAuth()), env);
     expect(get!.status).toBe(200);
   });
 
   it("forwards /api/room/{id}/ws to the durable object", async () => {
-    const { env, rooms } = makeEnv();
     const res = await route(
-      new Request("https://w/api/room/room42/ws", {
-        headers: { Upgrade: "websocket" },
-      }),
+      new Request("https://w/api/room/room42/ws", withAuth({
+        headers: { Upgrade: "websocket", Cookie: `${SESSION_COOKIE}=${sessionCookie}` },
+      })),
       env,
     );
     expect(res!.status).toBe(200);
@@ -91,37 +106,33 @@ describe("router", () => {
   });
 
   it("forwards /api/room/{id}/scene to the durable object", async () => {
-    const { env, rooms } = makeEnv();
-    const res = await route(new Request("https://w/api/room/room42/scene"), env);
+    const res = await route(new Request("https://w/api/room/room42/scene", withAuth()), env);
     expect(res!.status).toBe(200);
     expect(rooms.calls).toHaveLength(1);
   });
 
   it("rejects malformed room ids", async () => {
-    const { env } = makeEnv();
     const res = await route(
-      new Request("https://w/api/room/has spaces/ws"),
+      new Request("https://w/api/room/has spaces/ws", withAuth()),
       env,
     );
     expect(res!.status).toBe(400);
   });
 
-  it("returns null for non-API paths so the host can serve assets", async () => {
-    const { env } = makeEnv();
+  it("returns 401 for non-API paths when unauthenticated", async () => {
     const res = await route(new Request("https://w/index.html"), env);
-    expect(res).toBeNull();
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(401);
   });
 
   it("returns 404 for unknown /api paths", async () => {
-    const { env } = makeEnv();
-    const res = await route(new Request("https://w/api/unknown"), env);
+    const res = await route(new Request("https://w/api/unknown", withAuth()), env);
     expect(res!.status).toBe(404);
   });
 
   it("returns 405 on wrong method for scene endpoints", async () => {
-    const { env } = makeEnv();
     const res = await route(
-      new Request("https://w/api/v2/post/", { method: "GET" }),
+      new Request("https://w/api/v2/post/", withAuth({ method: "GET" })),
       env,
     );
     expect(res!.status).toBe(405);

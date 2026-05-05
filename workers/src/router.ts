@@ -8,13 +8,20 @@ import {
   handleSceneOptions,
   handleScenePost,
 } from "./scene";
+import { requireAuth } from "./auth";
+import { routeAuthRequest } from "./authRoutes";
 import type { Env } from "./types";
 
 const ROOM_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
- * Dispatches /api/* to the right handler. Returns null for paths the API
- * doesn't own, so the caller can fall through to static assets.
+ * Dispatches /api/* and auth routes to the right handler.
+ * Returns null for paths the Worker doesn't own (caller serves static assets).
+ *
+ * Auth rules:
+ *  - /login           → public (login page)
+ *  - /api/auth/*      → public (login/logout/me)
+ *  - everything else  → must have a valid session or API key
  */
 export const route = async (
   request: Request,
@@ -24,6 +31,22 @@ export const route = async (
   const path = url.pathname;
   const method = request.method;
 
+  // Auth routes (some public, some protected — routeAuthRequest handles the split)
+  const authResponse = await routeAuthRequest(request, env, path);
+  if (authResponse) return authResponse;
+
+  // All remaining routes require authentication.
+  return requireAuth(request, env, (req, e) =>
+    routeProtected(req, e, path, method),
+  );
+};
+
+const routeProtected = async (
+  request: Request,
+  env: Env,
+  path: string,
+  method: string,
+): Promise<Response> => {
   // ----- scene share API --------------------------------------------------
   if (path === "/api/v2/post/" || path === "/api/v2/post") {
     if (method === "OPTIONS") return handleSceneOptions(request);
@@ -63,5 +86,7 @@ export const route = async (
     return new Response("Not found", { status: 404 });
   }
 
-  return null;
+  // Static assets — auth already verified; return a sentinel so the Worker
+  // host can serve the file from Pages/Sites.
+  return new Response(null, { status: 200, headers: { "x-serve-static": "1" } });
 };

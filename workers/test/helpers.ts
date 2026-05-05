@@ -1,5 +1,6 @@
 // Minimal in-memory stand-ins for the bindings we use.
 // Just enough surface area for our handlers; no need to pull in miniflare.
+export { makeFullEnv } from "./envFactory";
 
 export class MemoryKV {
   private store = new Map<string, ArrayBuffer>();
@@ -21,7 +22,11 @@ export class MemoryKV {
     return value;
   }
 
-  async put(key: string, value: ArrayBuffer | string): Promise<void> {
+  async put(
+    key: string,
+    value: ArrayBuffer | string,
+    _options?: unknown,
+  ): Promise<void> {
     if (typeof value === "string") {
       this.store.set(key, new TextEncoder().encode(value).buffer as ArrayBuffer);
     } else {
@@ -31,6 +36,18 @@ export class MemoryKV {
 
   async delete(key: string): Promise<void> {
     this.store.delete(key);
+  }
+
+  async list(opts?: { prefix?: string }): Promise<{
+    keys: { name: string }[];
+    list_complete: boolean;
+    cursor: string;
+  }> {
+    const prefix = opts?.prefix ?? "";
+    const keys = [...this.store.keys()]
+      .filter((k) => k.startsWith(prefix))
+      .map((name) => ({ name }));
+    return { keys, list_complete: true, cursor: "" };
   }
 
   has(key: string) {

@@ -7,11 +7,16 @@ Firebase or external Socket.io server.
 
 | Feature | Powered by |
 |---|---|
-| Static SPA | Cloudflare Pages |
+| Static SPA | Cloudflare Pages (Workers Sites) |
 | Scene share links | Cloudflare Worker + KV |
 | Image/file storage | Cloudflare R2 |
 | Real-time collaboration | Cloudflare Durable Objects (WebSocket) |
 | Collab scene persistence | Durable Object storage |
+| Authentication (sessions + API keys) | Cloudflare Worker + KV |
+
+All routes are protected by authentication. There is no self-signup — an admin
+manages users and API keys. Programmatic access uses `Authorization: Bearer <key>`
+headers with API keys that start with `eak_`.
 
 ---
 
@@ -43,45 +48,69 @@ yarn install
 
 Run each command and **copy the IDs** it prints — you'll need them in Step 3.
 
-### KV namespace (scene share links)
+### KV namespace — scene share links
 
 ```bash
 wrangler kv namespace create SCENES
-# → Created namespace "SCENES" with ID: <KV_ID>
-
 wrangler kv namespace create SCENES --preview
-# → Created preview namespace with ID: <KV_PREVIEW_ID>
 ```
 
-### R2 bucket (image files)
+### KV namespaces — authentication
+
+```bash
+wrangler kv namespace create USERS
+wrangler kv namespace create USERS --preview
+
+wrangler kv namespace create SESSIONS
+wrangler kv namespace create SESSIONS --preview
+
+wrangler kv namespace create APIKEYS
+wrangler kv namespace create APIKEYS --preview
+```
+
+### R2 bucket — image files
 
 ```bash
 wrangler r2 bucket create excalidraw-files
-# preview bucket (used by wrangler dev)
 wrangler r2 bucket create excalidraw-files-preview
 ```
 
-### Durable Object (collab rooms)
+### Durable Object — collab rooms
 
-No pre-creation needed — the DO class is declared in `wrangler.toml` and
+No pre-creation needed. The DO class is declared in `wrangler.toml` and
 Cloudflare creates instances on first use.
 
 ---
 
 ## Step 3 — Fill in `wrangler.toml`
 
-Open `wrangler.toml` at the repo root and replace the placeholder IDs:
+Open `wrangler.toml` at the repo root and replace every `<...>` placeholder
+with the real IDs printed in Step 2:
 
 ```toml
 [[kv_namespaces]]
 binding = "SCENES"
-id = "<KV_ID>"               # from Step 2
-preview_id = "<KV_PREVIEW_ID>"
+id = "<SCENES_KV_ID>"
+preview_id = "<SCENES_KV_PREVIEW_ID>"
+
+[[kv_namespaces]]
+binding = "USERS"
+id = "<USERS_KV_ID>"
+preview_id = "<USERS_KV_PREVIEW_ID>"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "<SESSIONS_KV_ID>"
+preview_id = "<SESSIONS_KV_PREVIEW_ID>"
+
+[[kv_namespaces]]
+binding = "APIKEYS"
+id = "<APIKEYS_KV_ID>"
+preview_id = "<APIKEYS_KV_PREVIEW_ID>"
 ```
 
-The R2 bucket names (`excalidraw-files` / `excalidraw-files-preview`) and the
-Durable Object binding are already configured correctly if you used the names
-above.
+The R2 bucket names and the Durable Object binding are already configured
+correctly if you used the names above.
 
 ---
 
@@ -93,17 +122,16 @@ Copy the example env file:
 cp .env.example .env.production
 ```
 
-Edit `.env.production` and set your Worker's public URL. If you haven't
-deployed yet you can come back to this after Step 6 — use a placeholder for
-the first build:
+Edit `.env.production` and set your Worker's public URL (use a placeholder for
+the first build if you haven't deployed yet — update and rebuild after Step 6):
 
 ```env
 VITE_APP_PUBLIC_URL=https://excalidraw.<your-subdomain>.workers.dev
 ```
 
 All other variables (`VITE_APP_BACKEND_V2_GET_URL`, `VITE_APP_WS_SERVER_URL`,
-etc.) are derived from `VITE_APP_PUBLIC_URL` in the example file — leave them
-as-is unless you need a custom domain.
+etc.) are derived from `VITE_APP_PUBLIC_URL` — leave them as-is unless you
+need a custom domain.
 
 To **disable** the Excalidraw+ export button (recommended for self-hosters):
 
@@ -113,7 +141,41 @@ VITE_APP_PLUS_APP=
 
 ---
 
-## Step 5 — Build the frontend
+## Step 5 — Create the first admin user
+
+You have two options:
+
+### Option A — Bootstrap secret (zero-CLI setup)
+
+Set a wrangler secret before deploying. On the first request the Worker will
+auto-create an `admin` account and then ignore the secret:
+
+```bash
+wrangler secret put BOOTSTRAP_ADMIN_PASSWORD
+# Enter a strong password (min 8 chars) when prompted
+```
+
+After the first successful login you can delete the secret:
+
+```bash
+wrangler secret delete BOOTSTRAP_ADMIN_PASSWORD
+```
+
+### Option B — Seed via KV directly
+
+Run the helper script, which hashes the password locally using the same
+PBKDF2 algorithm as the Worker:
+
+```bash
+node scripts/create-admin.mjs <your-password>
+```
+
+Copy the printed `wrangler kv key put` command and run it. The key lands in
+KV immediately — no redeployment required.
+
+---
+
+## Step 6 — Build the frontend
 
 ```bash
 cd excalidraw-app
@@ -125,19 +187,16 @@ The output lands in `excalidraw-app/build/`.
 
 ---
 
-## Step 6 — Deploy
-
-Deploy the Worker (API + Durable Objects) and the static assets together:
+## Step 7 — Deploy
 
 ```bash
 wrangler deploy
 ```
 
-Wrangler reads `wrangler.toml`, uploads the worker bundle, registers the
-Durable Object migration, and serves the static `excalidraw-app/build/`
-directory via Workers Sites.
+Wrangler uploads the Worker bundle, registers the Durable Object migration, and
+serves `excalidraw-app/build/` via Workers Sites.
 
-On the first deploy Cloudflare will print your Worker's URL:
+On the first deploy Cloudflare prints your Worker's URL:
 
 ```
 https://excalidraw-worker.<your-account>.workers.dev
@@ -148,17 +207,111 @@ If this differs from what you put in `.env.production`, update it, rebuild
 
 ---
 
-## Step 7 — Smoke-test
+## Step 8 — First login
 
-1. **Open** `https://excalidraw-worker.<your-account>.workers.dev` — you should
-   see the Excalidraw canvas.
+1. Open `https://excalidraw-worker.<your-account>.workers.dev` — you are
+   redirected to `/login`.
+2. Log in with username `admin` and the password you set in Step 5.
+3. You are redirected to the Excalidraw canvas.
 
-2. **Share link** — draw something, click the share/link icon, copy the link,
-   open it in a new tab. The drawing should reload.
+---
 
-3. **Collaboration** — open the collab menu, start a session, open the live URL
-   in a second browser window. Cursors and edits should appear in real-time on
-   both sides.
+## Step 9 — Smoke-test
+
+1. **Canvas** — draw something, check the toolbar works.
+
+2. **Share link** — click the share icon, copy the link, open in a new tab.
+   The drawing should reload (you will need to be logged in).
+
+3. **Collaboration** — start a live session, open the URL in a second browser
+   window. Cursors and edits should appear in real-time on both sides.
+
+---
+
+## Managing users and API keys
+
+All admin endpoints require an authenticated admin session (cookie or API key).
+
+### Create a user
+
+```bash
+curl -X POST https://your-worker.workers.dev/api/admin/users \
+  -H "Authorization: Bearer <admin-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"strongpass1","role":"user"}'
+```
+
+### List users
+
+```bash
+curl https://your-worker.workers.dev/api/admin/users \
+  -H "Authorization: Bearer <admin-api-key>"
+```
+
+### Delete a user
+
+```bash
+curl -X DELETE https://your-worker.workers.dev/api/admin/users/alice \
+  -H "Authorization: Bearer <admin-api-key>"
+```
+
+### Change a user's password
+
+```bash
+curl -X POST https://your-worker.workers.dev/api/admin/users/alice/password \
+  -H "Authorization: Bearer <admin-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"password":"newstrongpass2"}'
+```
+
+### Create an API key
+
+Any authenticated user can create a key for themselves. Admins can also create
+keys for other users by passing `"username"` in the body.
+
+```bash
+curl -X POST https://your-worker.workers.dev/api/admin/api-keys \
+  -H "Authorization: Bearer <admin-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"label":"ci-pipeline"}'
+```
+
+Response:
+```json
+{"key":"eak_<64hexchars>","label":"ci-pipeline","username":"admin"}
+```
+
+Store the `key` value — it is shown only once.
+
+### List API keys
+
+```bash
+curl https://your-worker.workers.dev/api/admin/api-keys \
+  -H "Authorization: Bearer <admin-api-key>"
+```
+
+Admins see all keys; regular users see only their own.
+
+### Revoke an API key
+
+```bash
+curl -X DELETE "https://your-worker.workers.dev/api/admin/api-keys/eak_<key>" \
+  -H "Authorization: Bearer <admin-api-key>"
+```
+
+### Create the admin's first API key (via cookie session)
+
+```bash
+# Log in and capture the session cookie
+curl -c cookies.txt -X POST https://your-worker.workers.dev/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<password>"}'
+
+# Create a key using the session cookie
+curl -b cookies.txt -X POST https://your-worker.workers.dev/api/admin/api-keys \
+  -H "Content-Type: application/json" \
+  -d '{"label":"admin-key"}'
+```
 
 ---
 
@@ -178,8 +331,6 @@ Rebuild and redeploy.
 ---
 
 ## Local development
-
-Run the Worker locally with live reload against the real KV/R2/DO emulators:
 
 ```bash
 # Terminal 1 — build the frontend in watch mode
@@ -202,11 +353,15 @@ VITE_APP_ROOMS_API_URL=http://localhost:8787/api/room
 VITE_APP_WS_SERVER_URL=http://localhost:8787
 ```
 
+To set a local bootstrap password for `wrangler dev`:
+
+```bash
+echo "BOOTSTRAP_ADMIN_PASSWORD=devpassword" >> .dev.vars
+```
+
 ---
 
 ## Updating
-
-Pull the latest changes, reinstall deps, rebuild, and redeploy:
 
 ```bash
 git pull
@@ -232,5 +387,7 @@ For a small team the free tier is more than sufficient. For larger deployments
 consider a paid plan.
 
 Scene share links stored in KV have **no automatic expiry** — add a TTL via
-the Wrangler dashboard or a scheduled Cron Worker if you want automatic
-cleanup.
+the Wrangler dashboard or a scheduled Cron Worker if you want automatic cleanup.
+
+Sessions expire automatically after 7 days (KV TTL). API keys do not expire —
+revoke them explicitly when no longer needed.

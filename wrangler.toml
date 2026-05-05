@@ -11,6 +11,21 @@ binding = "SCENES"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 preview_id = "REPLACE_WITH_KV_PREVIEW_NAMESPACE_ID"
 
+[[kv_namespaces]]
+binding = "USERS"
+id = "REPLACE_WITH_USERS_KV_ID"
+preview_id = "REPLACE_WITH_USERS_KV_PREVIEW_ID"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "REPLACE_WITH_SESSIONS_KV_ID"
+preview_id = "REPLACE_WITH_SESSIONS_KV_PREVIEW_ID"
+
+[[kv_namespaces]]
+binding = "APIKEYS"
+id = "REPLACE_WITH_APIKEYS_KV_ID"
+preview_id = "REPLACE_WITH_APIKEYS_KV_PREVIEW_ID"
+
 [[r2_buckets]]
 binding = "FILES"
 bucket_name = "excalidraw-files"
