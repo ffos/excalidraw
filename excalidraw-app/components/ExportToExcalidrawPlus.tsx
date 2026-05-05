@@ -1,5 +1,4 @@
 import React from "react";
-import { uploadBytes, ref } from "firebase/storage";
 import { nanoid } from "nanoid";
 
 import { trackEvent } from "@excalidraw/excalidraw/analytics";
@@ -27,7 +26,35 @@ import type {
 
 import { FILE_UPLOAD_MAX_BYTES } from "../app_constants";
 import { encodeFilesForUpload } from "../data/FileManager";
-import { loadFirebaseStorage, saveFilesToFirebase } from "../data/firebase";
+
+const EXCALIDRAW_PLUS_BUCKET =
+  import.meta.env.VITE_APP_PLUS_EXPORT_BUCKET ||
+  "excalidraw-room-persistence.appspot.com";
+
+// Direct REST upload to Firebase Storage so we don't pull in the firebase SDK.
+// See https://firebase.google.com/docs/reference/rest/storage
+const uploadToPlusStorage = async (
+  path: string,
+  blob: Blob,
+  customMetadata?: Record<string, string>,
+) => {
+  const url = `https://firebasestorage.googleapis.com/v0/b/${EXCALIDRAW_PLUS_BUCKET}/o?uploadType=media&name=${encodeURIComponent(
+    path.replace(/^\//, ""),
+  )}`;
+  const headers: Record<string, string> = {
+    "Content-Type": blob.type || "application/octet-stream",
+  };
+  if (customMetadata) {
+    // Firebase encodes custom metadata as `x-goog-meta-*` request headers.
+    for (const [k, v] of Object.entries(customMetadata)) {
+      headers[`x-goog-meta-${k}`] = v;
+    }
+  }
+  const res = await fetch(url, { method: "POST", headers, body: blob });
+  if (!res.ok) {
+    throw new Error(`Excalidraw+ upload failed: ${res.status}`);
+  }
+};
 
 export const exportToExcalidrawPlus = async (
   elements: readonly NonDeletedExcalidrawElement[],
@@ -35,8 +62,6 @@ export const exportToExcalidrawPlus = async (
   files: BinaryFiles,
   name: string,
 ) => {
-  const storage = await loadFirebaseStorage();
-
   const id = `${nanoid(12)}`;
 
   const encryptionKey = (await generateEncryptionKey())!;
@@ -52,12 +77,9 @@ export const exportToExcalidrawPlus = async (
     },
   );
 
-  const storageRef = ref(storage, `/migrations/scenes/${id}`);
-  await uploadBytes(storageRef, blob, {
-    customMetadata: {
-      data: JSON.stringify({ version: 2, name }),
-      created: Date.now().toString(),
-    },
+  await uploadToPlusStorage(`/migrations/scenes/${id}`, blob, {
+    data: JSON.stringify({ version: 2, name }),
+    created: Date.now().toString(),
   });
 
   const filesMap = new Map<FileId, BinaryFileData>();
@@ -74,10 +96,14 @@ export const exportToExcalidrawPlus = async (
       maxBytes: FILE_UPLOAD_MAX_BYTES,
     });
 
-    await saveFilesToFirebase({
-      prefix: `/migrations/files/scenes/${id}`,
-      files: filesToUpload,
-    });
+    await Promise.all(
+      filesToUpload.map(({ id: fileId, buffer }) =>
+        uploadToPlusStorage(
+          `/migrations/files/scenes/${id}/${fileId}`,
+          new Blob([buffer.buffer as ArrayBuffer], { type: MIME_TYPES.binary }),
+        ),
+      ),
+    );
   }
 
   window.open(

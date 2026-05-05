@@ -20,7 +20,7 @@ import type {
   SyncableExcalidrawElement,
 } from "../data";
 import type { TCollabClass } from "./Collab";
-import type { Socket } from "socket.io-client";
+import type { Socket } from "./socket";
 
 class Portal {
   collab: TCollabClass;

@@ -505,8 +505,8 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     this.setIsCollaborating(true);
     LocalData.pauseSave("collaboration");
 
-    const { default: socketIOClient } = await import(
-      /* webpackChunkName: "socketIoClient" */ "socket.io-client"
+    const { connect: connectSocket } = await import(
+      /* webpackChunkName: "wsClient" */ "./socket"
     );
 
     const fallbackInitializationHandler = () => {
@@ -521,9 +521,7 @@ class Collab extends PureComponent<CollabProps, CollabState> {
 
     try {
       this.portal.socket = this.portal.open(
-        socketIOClient(import.meta.env.VITE_APP_WS_SERVER_URL, {
-          transports: ["websocket", "polling"],
-        }),
+        connectSocket(import.meta.env.VITE_APP_WS_SERVER_URL, roomId),
         roomId,
         roomKey,
       );
