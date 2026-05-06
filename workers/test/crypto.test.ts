@@ -20,9 +20,10 @@ describe("hashPassword / verifyPassword", () => {
     expect(a).not.toBe(b);
   });
 
-  it("hash is a bcrypt string (includes embedded salt)", async () => {
+  it("hash is a PBKDF2 encoded string with embedded salt", async () => {
     const hash = await hashPassword("x");
-    expect(hash).toMatch(/^\$2[ab]\$/);
+    expect(hash).toMatch(/^\$pbkdf2-sha256\$/);
+    expect(hash.split("$")).toHaveLength(5); // "", scheme, params, salt, hash
   });
 });
 

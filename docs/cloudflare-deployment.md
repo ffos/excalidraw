@@ -7,7 +7,7 @@ Firebase or external Socket.io server.
 
 | Feature | Powered by |
 |---|---|
-| Static SPA | Cloudflare Pages (Workers Sites) |
+| Static SPA | Cloudflare Workers Static Assets |
 | Scene share links | Cloudflare Worker + KV |
 | Image/file storage | Cloudflare R2 |
 | Real-time collaboration | Cloudflare Durable Objects (WebSocket) |
@@ -175,26 +175,23 @@ KV immediately — no redeployment required.
 
 ---
 
-## Step 6 — Build the frontend
+## Step 6 — (Skip to Step 7 — build is combined with deploy)
+
+Build the frontend first (this only needs re-running when the UI changes):
 
 ```bash
-cd excalidraw-app
-yarn build:app
-cd ..
+cd excalidraw-app && yarn build:app && cd ..
 ```
 
-The output lands in `excalidraw-app/build/`.
-
----
-
-## Step 7 — Deploy
+Then deploy the Worker and bundle the static assets:
 
 ```bash
 wrangler deploy
 ```
 
-Wrangler uploads the Worker bundle, registers the Durable Object migration, and
-serves `excalidraw-app/build/` via Workers Sites.
+Wrangler bundles the Worker TypeScript, packages the static assets from
+`excalidraw-app/build/` via Workers Static Assets, and uploads everything in a
+single request to Cloudflare.
 
 On the first deploy Cloudflare prints your Worker's URL:
 

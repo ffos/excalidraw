@@ -11,13 +11,12 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241224.0",
-    "@types/bcryptjs": "3.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8",
     "wrangler": "^3.91.0"
   },
   "dependencies": {
-    "bcryptjs": "3.0.3",
+    "@noble/hashes": "2.2.0",
     "jose": "6.2.3"
   }
 }
