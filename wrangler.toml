@@ -1,0 +1,46 @@
+name = "excalidraw-worker"
+main = "workers/src/index.ts"
+compatibility_date = "2024-09-23"
+
+[[kv_namespaces]]
+binding = "SCENES"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_KV_PREVIEW_NAMESPACE_ID"
+
+[[kv_namespaces]]
+binding = "USERS"
+id = "REPLACE_WITH_USERS_KV_ID"
+preview_id = "REPLACE_WITH_USERS_KV_PREVIEW_ID"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "REPLACE_WITH_SESSIONS_KV_ID"
+preview_id = "REPLACE_WITH_SESSIONS_KV_PREVIEW_ID"
+
+[[kv_namespaces]]
+binding = "APIKEYS"
+id = "REPLACE_WITH_APIKEYS_KV_ID"
+preview_id = "REPLACE_WITH_APIKEYS_KV_PREVIEW_ID"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "excalidraw-files"
+preview_bucket_name = "excalidraw-files-preview"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "CollabRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["CollabRoom"]
+
+[vars]
+ENVIRONMENT = "production"
+
+# Cloudflare Workers Static Assets (replaces deprecated [site] / Workers Sites).
+# Static files are bundled directly into the deployment — no separate KV upload.
+# Access via env.ASSETS.fetch(request) in the worker.
+[assets]
+directory = "./excalidraw-app/build"
+binding = "ASSETS"

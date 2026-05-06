@@ -49,17 +49,33 @@ vi.mock("../../excalidraw-app/data/firebase.ts", () => {
   };
 });
 
-vi.mock("socket.io-client", () => {
+vi.mock("../../excalidraw-app/collab/socket.ts", () => {
+  const fakeSocket = {
+    id: "test-socket",
+    close: () => {},
+    on: () => fakeSocket,
+    once: () => fakeSocket,
+    off: () => fakeSocket,
+    emit: () => {},
+  };
   return {
-    default: () => {
-      return {
-        close: () => {},
-        on: () => {},
-        once: () => {},
-        off: () => {},
-        emit: () => {},
-      };
+    Socket: class {
+      id = "test-socket";
+      close() {}
+      on() {
+        return this;
+      }
+      once() {
+        return this;
+      }
+      off() {
+        return this;
+      }
+      emit() {}
     },
+    connect: () => fakeSocket,
+    encodeFrame: (t: string, a: unknown[]) => JSON.stringify({ t, a }),
+    decodeFrame: (s: string) => JSON.parse(s),
   };
 });
 
