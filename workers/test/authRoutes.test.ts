@@ -23,8 +23,8 @@ const seedUser = async (
   password: string,
   role: "admin" | "user" = "user",
 ) => {
-  const { hash, salt } = await hashPassword(password);
-  const record: UserRecord = { passwordHash: hash, salt, role, createdAt: Date.now() };
+  const passwordHash = await hashPassword(password);
+  const record: UserRecord = { passwordHash, role, createdAt: Date.now() };
   await env.USERS.put(`user:${username}`, JSON.stringify(record));
 };
 

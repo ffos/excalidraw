@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 /**
- * Hashes a password with PBKDF2 (matching workers/src/crypto.ts) and prints
+ * Hashes a password with bcrypt (matching workers/src/crypto.ts) and prints
  * the wrangler command to seed the first admin user in the USERS KV namespace.
  *
  * Usage:
  *   node scripts/create-admin.mjs <password>
  *
- * Then run the printed wrangler command, and finally:
- *   wrangler deploy
+ * Requires Node 18+ and that workers/ deps are installed:
+ *   cd workers && yarn install
  */
+
+import bcrypt from "./workers/node_modules/bcryptjs/index.js";
 
 const password = process.argv[2];
 
@@ -20,33 +22,17 @@ if (!password || password.length < 8) {
   process.exit(1);
 }
 
-// Web Crypto is available in Node 18+, matching the Worker runtime exactly.
-const salt = crypto.getRandomValues(new Uint8Array(16));
-const saltHex = Array.from(salt)
-  .map((b) => b.toString(16).padStart(2, "0"))
-  .join("");
+if (password.length > 72) {
+  console.warn(
+    "Warning: bcrypt truncates passwords at 72 bytes. " +
+    "Extra characters beyond 72 bytes are ignored.",
+  );
+}
 
-const key = await crypto.subtle.importKey(
-  "raw",
-  new TextEncoder().encode(password),
-  "PBKDF2",
-  false,
-  ["deriveBits"],
-);
-
-const bits = await crypto.subtle.deriveBits(
-  { name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 },
-  key,
-  256,
-);
-
-const hashHex = Array.from(new Uint8Array(bits))
-  .map((b) => b.toString(16).padStart(2, "0"))
-  .join("");
+const hash = await bcrypt.hash(password, 10);
 
 const record = JSON.stringify({
-  passwordHash: hashHex,
-  salt: saltHex,
+  passwordHash: hash,
   role: "admin",
   createdAt: Date.now(),
 });
@@ -54,6 +40,5 @@ const record = JSON.stringify({
 console.log("\nRun the following command to create the admin user:\n");
 console.log(`  wrangler kv key put --binding=USERS "user:admin" '${record}'\n`);
 console.log(
-  "Then deploy (or if already deployed the key is effective immediately):\n",
+  "The key is effective immediately — no redeployment required.\n",
 );
-console.log("  wrangler deploy\n");

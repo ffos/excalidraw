@@ -5,26 +5,24 @@ import { API_KEY_PREFIX } from "../src/types";
 
 describe("hashPassword / verifyPassword", () => {
   it("verifies correct password", async () => {
-    const { hash, salt } = await hashPassword("correct-horse");
-    expect(await verifyPassword("correct-horse", hash, salt)).toBe(true);
+    const hash = await hashPassword("correct-horse");
+    expect(await verifyPassword("correct-horse", hash)).toBe(true);
   });
 
   it("rejects wrong password", async () => {
-    const { hash, salt } = await hashPassword("correct-horse");
-    expect(await verifyPassword("wrong-horse", hash, salt)).toBe(false);
+    const hash = await hashPassword("correct-horse");
+    expect(await verifyPassword("wrong-horse", hash)).toBe(false);
   });
 
   it("produces different hashes for same password (random salt)", async () => {
     const a = await hashPassword("same");
     const b = await hashPassword("same");
-    expect(a.salt).not.toBe(b.salt);
-    expect(a.hash).not.toBe(b.hash);
+    expect(a).not.toBe(b);
   });
 
-  it("hash is a 64-char hex string", async () => {
-    const { hash, salt } = await hashPassword("x");
-    expect(hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(salt).toMatch(/^[a-f0-9]{32}$/);
+  it("hash is a bcrypt string (includes embedded salt)", async () => {
+    const hash = await hashPassword("x");
+    expect(hash).toMatch(/^\$2[ab]\$/);
   });
 });
 

@@ -46,8 +46,8 @@ describe("router", () => {
   beforeEach(async () => {
     ({ env, rooms } = makeEnv());
     // Seed a user and create a session for auth
-    const { hash, salt } = await hashPassword("testpass");
-    const record: UserRecord = { passwordHash: hash, salt, role: "user", createdAt: Date.now() };
+    const passwordHash = await hashPassword("testpass");
+    const record: UserRecord = { passwordHash, role: "user", createdAt: Date.now() };
     await env.USERS.put("user:testuser", JSON.stringify(record));
     sessionCookie = await createSession(env, "testuser", "user");
   });

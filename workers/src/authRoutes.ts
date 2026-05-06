@@ -32,10 +32,9 @@ export const maybeBootstrap = async (env: Env): Promise<void> => {
   if (!env.BOOTSTRAP_ADMIN_PASSWORD) return;
   const existing = await env.USERS.get("user:admin");
   if (existing) return;
-  const { hash, salt } = await hashPassword(env.BOOTSTRAP_ADMIN_PASSWORD);
+  const hash = await hashPassword(env.BOOTSTRAP_ADMIN_PASSWORD);
   const record: UserRecord = {
     passwordHash: hash,
-    salt,
     role: "admin",
     createdAt: Date.now(),
   };
@@ -95,7 +94,10 @@ export const handleLogin = async (
     return badCredentials(request, next);
   }
 
-  const valid = await verifyPassword(password, record.passwordHash, record.salt);
+  if (!record.passwordHash) {
+    return badCredentials(request, next);
+  }
+  const valid = await verifyPassword(password, record.passwordHash);
   if (!valid) {
     return badCredentials(request, next);
   }
@@ -227,10 +229,9 @@ export const handleAdminCreateUser = async (
     return json({ error: "User already exists" }, 409);
   }
 
-  const { hash, salt } = await hashPassword(password);
+  const passwordHash = await hashPassword(password);
   const record: UserRecord = {
-    passwordHash: hash,
-    salt,
+    passwordHash,
     role,
     createdAt: Date.now(),
   };
@@ -284,10 +285,10 @@ export const handleAdminChangePassword = async (
   if (!existing) {
     return json({ error: "User not found" }, 404);
   }
-  const { hash, salt } = await hashPassword(password);
+  const passwordHash = await hashPassword(password);
   await env.USERS.put(
     `user:${username}`,
-    JSON.stringify({ ...existing, passwordHash: hash, salt }),
+    JSON.stringify({ ...existing, passwordHash }),
   );
   return json({ ok: true });
 };
