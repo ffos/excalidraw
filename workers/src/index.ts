@@ -5,15 +5,12 @@ export { CollabRoom } from "./room";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const apiResponse = await route(request, env);
-    if (apiResponse) {
-      return apiResponse;
+    const response = await route(request, env);
+    if (response !== null) {
+      return response;
     }
-
-    // Anything else falls through to the static assets binding (Pages /
-    // Workers Sites). When deploying with `wrangler pages deploy`, Pages
-    // wraps this Worker and serves /static-assets first; the Worker only
-    // sees what Pages doesn't recognise.
-    return new Response("Not found", { status: 404 });
+    // Authenticated non-API request — serve the pre-built SPA from the
+    // Workers Static Assets binding.
+    return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;

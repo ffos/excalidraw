@@ -8,42 +8,62 @@ import {
   handleSceneOptions,
   handleScenePost,
 } from "./scene";
-import { requireAuth } from "./auth";
+import { resolveAuth, requireAdmin } from "./auth";
 import { routeAuthRequest } from "./authRoutes";
-import type { Env } from "./types";
+import type { AuthContext, Env } from "./types";
 
 const ROOM_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
  * Dispatches /api/* and auth routes to the right handler.
- * Returns null for paths the Worker doesn't own (caller serves static assets).
+ *
+ * Returns:
+ *  - A Response for auth/API routes
+ *  - null for authenticated non-API paths (caller serves static assets)
  *
  * Auth rules:
- *  - /login           → public (login page)
- *  - /api/auth/*      → public (login/logout/me)
- *  - everything else  → must have a valid session or API key
+ *  - /login and /api/auth/*  → public
+ *  - everything else         → requires a valid session or API key
+ *    • browsers get a redirect to /login
+ *    • API callers get 401 JSON
  */
 export const route = async (
   request: Request,
   env: Env,
 ): Promise<Response | null> => {
-  const url = new URL(request.url);
-  const path = url.pathname;
+  const { pathname: path } = new URL(request.url);
   const method = request.method;
 
-  // Auth routes (some public, some protected — routeAuthRequest handles the split)
+  // Public auth routes (login page, login POST, logout, me)
   const authResponse = await routeAuthRequest(request, env, path);
-  if (authResponse) return authResponse;
+  if (authResponse !== null) return authResponse;
 
-  // All remaining routes require authentication.
-  return requireAuth(request, env, (req, e) =>
-    routeProtected(req, e, path, method),
-  );
+  // All other routes require authentication.
+  const auth = await resolveAuth(request, env);
+  if (!auth) {
+    const acceptsHtml = (request.headers.get("Accept") ?? "").includes("text/html");
+    if (acceptsHtml) {
+      const next = encodeURIComponent(path);
+      return Response.redirect(new URL(`/login?next=${next}`, request.url).toString(), 302);
+    }
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Only /api/* paths are handled here; everything else falls through to ASSETS.
+  if (!path.startsWith("/api/")) {
+    return null;
+  }
+
+  return routeApi(request, env, auth, path, method);
 };
 
-const routeProtected = async (
+const routeApi = async (
   request: Request,
   env: Env,
+  _auth: AuthContext,
   path: string,
   method: string,
 ): Promise<Response> => {
@@ -82,11 +102,8 @@ const routeProtected = async (
     return stub.fetch(request);
   }
 
-  if (path.startsWith("/api/")) {
-    return new Response("Not found", { status: 404 });
-  }
-
-  // Static assets — auth already verified; return a sentinel so the Worker
-  // host can serve the file from Pages/Sites.
-  return new Response(null, { status: 200, headers: { "x-serve-static": "1" } });
+  return new Response("Not found", { status: 404 });
 };
+
+// Re-export for use in authRoutes.ts
+export { requireAdmin };

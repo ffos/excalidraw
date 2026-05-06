@@ -14,6 +14,10 @@ export const makeFullEnv = (
     USERS: new MemoryKV() as unknown as KVNamespace,
     SESSIONS: new MemoryKV() as unknown as KVNamespace,
     APIKEYS: new MemoryKV() as unknown as KVNamespace,
+    ASSETS: {
+      fetch: async (req: RequestInfo) =>
+        new Response(`asset:${typeof req === "string" ? req : (req as Request).url}`, { status: 200 }),
+    } as unknown as Fetcher,
     ENVIRONMENT: "test",
     ...overrides,
   }) as Env;

@@ -119,7 +119,12 @@ describe("router", () => {
     expect(res!.status).toBe(400);
   });
 
-  it("returns 401 for non-API paths when unauthenticated", async () => {
+  it("returns null for authenticated non-API paths (caller serves static assets)", async () => {
+    const res = await route(new Request("https://w/index.html", withAuth()), env);
+    expect(res).toBeNull();
+  });
+
+  it("returns 401 for unauthenticated non-API paths", async () => {
     const res = await route(new Request("https://w/index.html"), env);
     expect(res).not.toBeNull();
     expect(res!.status).toBe(401);

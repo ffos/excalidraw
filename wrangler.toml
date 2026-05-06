@@ -42,6 +42,9 @@ new_classes = ["CollabRoom"]
 [vars]
 ENVIRONMENT = "production"
 
-# Cloudflare Pages config (static assets)
-[site]
-bucket = "./excalidraw-app/build"
+# Cloudflare Workers Static Assets (replaces deprecated [site] / Workers Sites).
+# Static files are bundled directly into the deployment — no separate KV upload.
+# Access via env.ASSETS.fetch(request) in the worker.
+[assets]
+directory = "./excalidraw-app/build"
+binding = "ASSETS"

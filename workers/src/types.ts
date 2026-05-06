@@ -2,6 +2,8 @@ export interface Env {
   SCENES: KVNamespace;
   FILES: R2Bucket;
   ROOMS: DurableObjectNamespace;
+  /** Workers Static Assets binding — serves the pre-built SPA. */
+  ASSETS: Fetcher;
   USERS: KVNamespace;
   SESSIONS: KVNamespace;
   APIKEYS: KVNamespace;

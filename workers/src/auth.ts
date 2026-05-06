@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { generateSessionToken } from "./crypto";
 import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
@@ -41,7 +42,6 @@ export const createSession = async (
   username: string,
   role: Role,
 ): Promise<string> => {
-  const { generateSessionToken } = await import("./crypto");
   const token = generateSessionToken();
   const record: SessionRecord = { username, role, createdAt: Date.now() };
   await env.SESSIONS.put(`session:${token}`, JSON.stringify(record), {
